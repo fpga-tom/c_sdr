@@ -23,6 +23,7 @@ static bq_t cmd_bq;
 
 static sdr_thread_t *cmd_thread;
 static sdr_thread_t *rx_thread;
+static uint32_t _freq;
 
 #define HOST "127.0.0.1"
 #define PORT 1234
@@ -218,8 +219,14 @@ int start() {
 
 static 
 int tune(uint32_t f) {
+	_freq = f;
 	cmd(RTL_TCP_COMMAND_SET_FREQUENCY,f);
 	return 0;
+}
+
+static
+uint32_t freq() {
+	return _freq;
 }
 
 static 
@@ -286,6 +293,7 @@ rtl_sdr_t rtl_sdr = {
 	.open = open,
 	.start = start,
 	.tune = tune,
+	.freq = freq,
 	.agc = agc,
 	.sps = sps,
 	.packet = packet,

@@ -18,6 +18,7 @@ static int waterfallTop;
 
 static GtkWidget *canvas;
 static GtkWidget *freq_input;
+static GtkWidget *agc_button;
 static sdr_mutex_t canvas_m;
 
 static gboolean change_freq(GtkEditable *editable, GdkEventKey *event, gpointer data) {
@@ -32,16 +33,32 @@ static gboolean change_freq(GtkEditable *editable, GdkEventKey *event, gpointer 
 	return FALSE;
 }
 
+static gboolean scroll_freq(GtkWidget *widget, GdkEventScroll *event, gpointer data) {
+	if(event->direction == GDK_SCROLL_UP) {
+		rtl_sdr.tune(rtl_sdr.freq()+100000);
+	}
+	if(event->direction == GDK_SCROLL_DOWN) {
+		rtl_sdr.tune(rtl_sdr.freq()-100000);
+	}
+	return TRUE;
+}
+
+static void toggle_agc(GtkToggleButton *togglebutton, gpointer data) {
+	rtl_sdr.agc(gtk_toggle_button_get_active(togglebutton));
+}
+
 static gboolean draw_points(GtkWidget *widget, cairo_t *cr, gpointer data) {
 	int i;
 	char fps_text[64] = {0,};
 	char load_text[64] = {0,};
 	char sleep_text[64] = {0,};
+	char freq_text[64] = {0,};
 
 	sdr_mutex_lock(&canvas_m);
 	sprintf(fps_text, "fps: %.2f", fps);
 	sprintf(load_text, "load: %.2f", load);
 	sprintf(sleep_text, "sleep: %.2f", sleep_time);
+	sprintf(freq_text, "freq: %u", rtl_sdr.freq());
 
 
 	cairo_text_extents_t te;
@@ -55,12 +72,15 @@ static gboolean draw_points(GtkWidget *widget, cairo_t *cr, gpointer data) {
 	cairo_show_text(cr, load_text);
 	cairo_move_to(cr, 10, 60);
 	cairo_show_text(cr, sleep_text);
+	cairo_move_to(cr, 10, 80);
+	cairo_show_text(cr, freq_text);
 
 	cairo_set_source_rgb(cr, 0, 0, 0);
 	cairo_set_line_width(cr, .2);
+	cairo_move_to(cr, 0, 0);
 	for(i=0;i<FFTW_SIZE;i++) {
-		cairo_move_to(cr,i,0);
-		cairo_line_to(cr,i,300-mag[i]/10);
+//		cairo_move_to(cr,i,300-log10(mag[i])*50);
+		cairo_line_to(cr,i,250-log10(mag[i])*30);
 	}
 	cairo_stroke(cr);
 
@@ -86,9 +106,9 @@ void draw(float* _mag, float _fps, float _load, long _sleep_time) {
 	sleep_time = _sleep_time;
 	sdr_mutex_lock(&canvas_m);
 	for(int i=0;i<width;i++) {
-		bitmapData[waterfallTop][i*4]=((int)mag[i]*10)&0xff;
-		bitmapData[waterfallTop][i*4+1]=(((int)mag[i]*10)>>8)&0xff;
-		bitmapData[waterfallTop][i*4+2]=(((int)mag[i]*10)>>16)&0xff;
+		bitmapData[waterfallTop][i*4]=((int)mag[i]*20)&0xff;
+		bitmapData[waterfallTop][i*4+1]=(((int)mag[i]*20)>>8)&0xff;
+		bitmapData[waterfallTop][i*4+2]=(((int)mag[i]*20)>>16)&0xff;
 	}
 	gtk_widget_queue_draw(canvas);
 	sdr_mutex_unlock(&canvas_m);
@@ -109,9 +129,13 @@ void open(int *argc, char ***argv) {
 	window = GTK_WIDGET( gtk_builder_get_object( builder, "applicationwindow1" ) );
 	canvas = GTK_WIDGET( gtk_builder_get_object( builder, "drawingarea1" ) );
 	freq_input = GTK_WIDGET( gtk_builder_get_object( builder, "entry1" ) );
+	agc_button = GTK_WIDGET( gtk_builder_get_object( builder, "togglebutton1" ) );
 
 	g_signal_connect(G_OBJECT(canvas), "draw", G_CALLBACK(draw_points), NULL); 
 	g_signal_connect(G_OBJECT(freq_input), "key-press-event", G_CALLBACK(change_freq), NULL); 
+	g_signal_connect(G_OBJECT(canvas), "scroll-event", G_CALLBACK(scroll_freq), NULL); 
+	g_signal_connect(G_OBJECT(agc_button), "toggled", G_CALLBACK(toggle_agc), NULL); 
+	gtk_widget_add_events(GTK_WIDGET(canvas), GDK_SCROLL_MASK);
 
 	/* Destroy builder */
     g_object_unref( G_OBJECT( builder ) );

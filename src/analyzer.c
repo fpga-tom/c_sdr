@@ -49,7 +49,6 @@ static void *analyzer_td(void *arg) {
 		scheduler.offer(p);
 		surface.draw(mag, fps, load, sleep_time);
 		sleep_time = 1000000.0f/fps - (c_time() - timestamp);
-//		printf("fps: %u load %.2f sleep: %ld\n", fps, load, sleep_time);
 		if(sleep_time > 0) {
 			load = (c_time() - timestamp) / (1000000.0f/fps);
 			if(load < LOW_THRESHOLD && fps < MAX_FRAME_RATE)

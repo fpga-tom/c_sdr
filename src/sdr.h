@@ -70,6 +70,7 @@ typedef struct {
 	int (*open)(void *(*callback)(void*));
 	int (*start)();
 	int (*tune)(uint32_t);
+	uint32_t (*freq)();
 	int (*sps)(uint32_t);
 	int (*agc)(int);
 	void (*packet)(packet_t*);
