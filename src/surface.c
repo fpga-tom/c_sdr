@@ -83,6 +83,9 @@ static gboolean draw_points(GtkWidget *widget, cairo_t *cr, gpointer data) {
 		cairo_line_to(cr,i,250-log10(mag[i])*30);
 	}
 	cairo_stroke(cr);
+	cairo_move_to(cr, 512,0);
+	cairo_line_to(cr, 512,512);
+	cairo_stroke(cr);
 
 	for(i=0;i<256;i++) {
 		cairo_set_source_surface(cr, bitmap[(i + waterfallTop)%256],0,i+300);
