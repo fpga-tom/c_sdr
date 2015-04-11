@@ -1,3 +1,5 @@
+#include <sys/types.h>
+#include <unistd.h>
 #include <stdio.h>
 #include <pulse/pulseaudio.h>
 #include <pulse/simple.h>
@@ -10,61 +12,96 @@
 
 static bq_t demod_bq;
 static packet_t packets[DEMODQ_SIZE];
-static decim_crcf decim;
-static decim_rrrf decim1;
-static unsigned int M = 16;
+static unsigned int M = (4);
 static unsigned int M1 = 2;
-static unsigned int h_len = 21;
-static liquid_fmtype type = LIQUID_MODEM_FM_DELAY_CONJ;
-static float mod_index = 0.2f;
+static float kf = 0.8f;
 static float fc = 0;
-static freqmodem demod;
+static freqdem demod;
+
+static resamp_crcf resamp;
+static resamp2_rrrf resamp2, resamp2_1, resamp2_2;
+static iirdecim_crcf decim;
+static firhilbf hilb;
+static firfilt_crcf rrc;
+
+static float *hr;
+static unsigned int hr_len;
 
 static pa_simple *stream = NULL;
 static sdr_thread_t *play_thread;
 
 static void process(packet_t *p) {
 	float complex y[FFTW_SIZE/M];
+	unsigned int ny = 0;
 	float z[FFTW_SIZE/M];
 	float z1[FFTW_SIZE/M/M1];
+	float z2[FFTW_SIZE/M/M1/M1];
+	float z3[FFTW_SIZE/M/M1/M1/M1];
+	float complex h[FFTW_SIZE/M/2];
+	float complex hb[FFTW_SIZE/M/2];
+	float complex hr[FFTW_SIZE/M/2];
 	int error;
-	for(int i=0;i<FFTW_SIZE/M;i++) {
-		decim_crcf_execute(decim,&p->payload[i*M],&y[i], 0);
-		z[i] /= M;
-	}
-	for(int i=0;i<FFTW_SIZE/M;i++) {
-		freqmodem_demodulate(demod, y[i],&z[i]);
-	}
-	for(int i=0;i<FFTW_SIZE/M/M1;i++) {
-		decim_rrrf_execute(decim1,&z[i*M1],&z1[i], 0);
-		z1[i] /= M1*50;
-	}
+	unsigned int nhr;
 
-	if (pa_simple_write(stream, z1, (size_t) sizeof(z1), &error) < 0) {
+	for(int i=0;i<FFTW_SIZE/M;i++)
+		iirdecim_crcf_execute(decim, &p->payload[M*i], &y[i]);
+	freqdem_demodulate_block(demod, y, FFTW_SIZE/M, z);
+	firhilbf_decim_execute(hilb, z, h);
+	for(int i=0;i<FFTW_SIZE/M/2;i++) {
+		firfilt_crcf_push(rrc, h[i]);
+		firfilt_crcf_execute(rrc, &hb[i]);
+	}
+	resamp_crcf_execute_block(resamp, hb, FFTW_SIZE/M/2, hr, &nhr);
+
+	for(int i=0;i<FFTW_SIZE/M/M1;i++)
+		resamp2_rrrf_decim_execute(resamp2,&z[2*i], &z1[i]); 
+	for(int i=0;i<FFTW_SIZE/M/M1/M1;i++)
+		resamp2_rrrf_decim_execute(resamp2_1,&z1[2*i], &z2[i]); 
+	for(int i=0;i<FFTW_SIZE/M/M1/M1/M1;i++)
+		resamp2_rrrf_decim_execute(resamp2_2,&z2[2*i], &z3[i]); 
+	for(int i=0;i<FFTW_SIZE/M/M1/M1;i++)
+		z3[i]/=10;
+
+
+	if (pa_simple_write(stream, z3, sizeof(z3), &error) < 0) {
 		fprintf(stderr, __FILE__": pa_simple_write() failed: %s\n", pa_strerror(error));
 	}
 }
 
-static void* play_td(void *arg) {
-	unsigned int h_len = 2*M*2+1; 
-	unsigned int h_len1 = 2*M1*2+1; 
-	float h[h_len];     // transmit filter                                                                    
-	float g[h_len];     // receive filter (reverse of h)                                                      
-	float h1[h_len1];     // transmit filter                                                                    
-	float g1[h_len1];     // receive filter (reverse of h)                                                      
-	design_rrc_filter(M,2,0.7f,0.3f,h);   
-	design_rrc_filter(M1,2,0.1f,0.3f,h1);   
-    unsigned int i;                                                                                           
-    for (i=0; i<h_len; i++)                                                                                   
-        g[i] = h[h_len-i-1];
-    for (i=0; i<h_len1; i++)                                                                                   
-        g1[i] = h1[h_len1-i-1];
-	decim  = decim_crcf_create(M,g,h_len);
-	decim1 = decim_rrrf_create(M1, g1, h_len1);
+static void* dsp_td(void *arg) {
 
-	demod = freqmodem_create(mod_index, fc, type);
+	unsigned int m = 5;
+    unsigned int m1    = 8;     // resampling filter semi-length (filter delay)                               
+    float As          = 60.0f;  // resampling filter stop-band attenuation [dB]                               
+	float slsl = 60.0f;
+	float beta = 1.0f;
+	unsigned int m2 = 3;
+	unsigned int k = (SPS/M)/2375;
 
-	i = 0;
+
+	unsigned int h_len = 8;
+	float r =  1.0f/k;
+	float bw = 0.4f;
+	float slsl1 = 60.f;
+	unsigned int npfb=16;
+	printf("dsp thread pid: %d\n", getpid());
+
+	resamp = resamp_crcf_create(r, h_len, bw, slsl1, npfb);
+	resamp2 = resamp2_rrrf_create(m1,0,As); 
+	resamp2_1 = resamp2_rrrf_create(m1,0,As); 
+	resamp2_2 = resamp2_rrrf_create(m1,0,As); 
+	decim = iirdecim_crcf_create_default(M, 8);
+	hilb = firhilbf_create(m, slsl);
+	hr_len = 2*k*m2+1;
+	hr = (float*) malloc(sizeof(float)*hr_len);
+	if(!hr) {
+		sdr_log(ERROR, "cannot allocate rrc");
+	}
+	liquid_firdes_rnyquist(LIQUID_FIRFILT_RRC, k, m2, beta, 0, hr);
+	rrc = firfilt_crcf_create(hr, h_len);
+	demod = freqdem_create(kf);
+
+
 	while(1) {
 		bq_lock(&demod_bq);
 		while(list_empty(&demod_bq.q)) {
@@ -89,7 +126,7 @@ int open() {
 	int i;
 	static const pa_sample_spec ss = {
 		 .format = PA_SAMPLE_FLOAT32LE,
-		 .rate = 44100,
+		 .rate = AUDIO,
 		 .channels = 1
 	};
 	bq_init(&demod_bq);
@@ -118,7 +155,7 @@ int start() {
 		sdr_log(ERROR, "scheduler malloc error occurred");
 		return 0;
 	}
-	if(sdr_thread_create(play_thread, play_td, NULL)) {
+	if(sdr_thread_create(play_thread, dsp_td, NULL)) {
 		sdr_log(ERROR, "cannot create scheduler thread");
 		return 0;
 	}

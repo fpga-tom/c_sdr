@@ -7,8 +7,13 @@
 #include "list.h"
 #include "linux_al.h"
 
-#define BUF_SIZE 2048
+#define BUF_SIZE (4096)
 #define FFTW_SIZE (BUF_SIZE/2)
+//#define SPS (1411200)
+#define SPS (228000*4)
+#define FM 150000
+//#define AUDIO 44100
+#define AUDIO (28500)
 
 
 typedef struct {
@@ -63,7 +68,7 @@ static inline void pool(struct list_head *l, bq_t *p) {
 typedef struct {
 	struct list_head list;
 	float complex payload[FFTW_SIZE];
-	ssize_t size;
+	size_t size;
 } packet_t;
 
 typedef struct {

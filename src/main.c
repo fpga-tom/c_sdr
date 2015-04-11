@@ -13,7 +13,7 @@ int main(int argc, char** argv) {
 	rtl_sdr.open(NULL);
 	usleep(100000);
 //	printf("connected\n");
-	rtl_sdr.sps(1411200);
+	rtl_sdr.sps(SPS);
 	rtl_sdr.tune(91200000);
 //	rtl_sdr.tune(88800000);
 	rtl_sdr.agc(1);
