@@ -157,6 +157,7 @@ static void* rx(void *arg) {
 
 static void fill(buf_t *buf, packet_t *packet) {
 	int i;
+	packet->freq = _freq;
 	for(i=0;i<BUF_SIZE/2;i++) {
 		packet->payload[i] = lookup_table[buf->data[2*i]&0xff]
 			+ _Complex_I*lookup_table[buf->data[2*i+1]&0xff];
@@ -226,7 +227,7 @@ int tune(uint32_t f) {
 
 static
 uint32_t freq() {
-	return _freq;
+	return 0;
 }
 
 static 

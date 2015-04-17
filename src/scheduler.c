@@ -2,6 +2,7 @@
 
 static bq_t fft_bq;
 static bq_t *demod_bq;
+static bq_t *wb_bq;
 
 #define FFTQ_SIZE 4
 
@@ -31,6 +32,14 @@ static void *sched(void *arg) {
 				bq_broadcast(demod_bq);
 			}
 			bq_unlock(demod_bq);
+			bq_lock(wb_bq);
+			if(!list_empty(&wb_bq->p)) {
+				packet_t *p = list_entry(wb_bq->p.next, packet_t, list);
+				rtl_sdr.fill(b, p);
+				queue(&p->list, wb_bq);
+				bq_broadcast(wb_bq);
+			}
+			bq_unlock(wb_bq);
 			rtl_sdr.offer(b);
 		}
 	}
@@ -39,9 +48,10 @@ static void *sched(void *arg) {
 
 // public interface
 static
-int start(bq_t *dq) {
+int start(bq_t *dq, bq_t *wbq) {
 	int i;
 	demod_bq = dq;
+	wb_bq = wbq;
 	bq_init(&fft_bq);
 	for(i=0;i<FFTQ_SIZE;i++) {
 		list_add_tail(&packets[i].list, &fft_bq.p);

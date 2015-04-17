@@ -5,10 +5,16 @@
 #include <math.h>
 #include "sdr.h"
 
+#define SCATTER_COUNT 128
+
+static bq_t scatter_bq;
+
 static float fps;
 static float load;
 static float mag[FFTW_SIZE];
+static packet_t scatter[SCATTER_COUNT];
 static float sleep_time;
+static float complex tmp_scatter[FFTW_SIZE];
 
 static int width = 1024;
 static int height = 256;
@@ -75,6 +81,7 @@ static gboolean draw_points(GtkWidget *widget, cairo_t *cr, gpointer data) {
 	cairo_move_to(cr, 10, 80);
 	cairo_show_text(cr, freq_text);
 
+#if 1
 	cairo_set_source_rgb(cr, 0, 0, 0);
 	cairo_set_line_width(cr, .2);
 	cairo_move_to(cr, 0, 0);
@@ -83,9 +90,12 @@ static gboolean draw_points(GtkWidget *widget, cairo_t *cr, gpointer data) {
 		cairo_line_to(cr,i,250-log10(mag[i])*30);
 	}
 	cairo_stroke(cr);
+#endif
+#if 0
 	cairo_move_to(cr, 512,0);
 	cairo_line_to(cr, 512,512);
 	cairo_stroke(cr);
+#endif
 
 	for(i=0;i<256;i++) {
 		cairo_set_source_surface(cr, bitmap[(i + waterfallTop)%256],0,i+300);
@@ -94,6 +104,21 @@ static gboolean draw_points(GtkWidget *widget, cairo_t *cr, gpointer data) {
 	waterfallTop--;
 	if(waterfallTop<0)
 		waterfallTop+=height;
+	cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
+    cairo_set_source_rgb(cr, 0, 0, 0);
+    cairo_set_line_width(cr, 5);
+	bq_lock(&scatter_bq);
+	if(!list_empty(&scatter_bq.q)) {
+		packet_t *p = list_entry(scatter_bq.q.next, packet_t, list);
+		list_del(&p->list);
+		bq_unlock(&scatter_bq);
+		memcpy(tmp_scatter, p->payload, sizeof(tmp_scatter));
+		bq_lock(&scatter_bq);
+		list_add_tail(&p->list, &scatter_bq.p);
+	}
+	bq_unlock(&scatter_bq);
+	cairo_set_source_rgb(cr, 0, 0, 0);
+	cairo_stroke(cr);
 	sdr_mutex_unlock(&canvas_m);
 
 	return TRUE;
@@ -153,6 +178,12 @@ void open(int *argc, char ***argv) {
 				bitmapData[i], format, width, 1, stride);
 	}
 
+	bq_init(&scatter_bq);
+	bq_lock(&scatter_bq);
+	for(int i=0;i<SCATTER_COUNT;i++)
+		list_add_tail(&scatter[i].list, &scatter_bq.p);
+	bq_unlock(&scatter_bq);
+
     /* Show main window and start main loop */
     gtk_widget_show( window );
 }
@@ -165,5 +196,6 @@ void start() {
 surface_t surface = {
 	.open = open,
 	.start = start,
-	.draw = draw
+	.draw = draw,
+	.scatter_bq = &scatter_bq
 };

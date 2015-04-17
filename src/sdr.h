@@ -7,10 +7,12 @@
 #include "list.h"
 #include "linux_al.h"
 
-#define BUF_SIZE (4096)
+#define BUF_SIZE (2048)
 #define FFTW_SIZE (BUF_SIZE/2)
 //#define SPS (1411200)
 #define SPS (228000*4)
+#define NUM_CHANNELS 10
+#define BW (NUM_CHANNELS*SPS)
 #define FM 150000
 //#define AUDIO 44100
 #define AUDIO (28500)
@@ -69,6 +71,7 @@ typedef struct {
 	struct list_head list;
 	float complex payload[FFTW_SIZE];
 	size_t size;
+	uint32_t freq;
 } packet_t;
 
 typedef struct {
@@ -86,7 +89,7 @@ typedef struct {
 } rtl_sdr_t;
 
 typedef struct {
-	int (*start)(bq_t*);
+	int (*start)(bq_t*, bq_t*);
 	packet_t *(*wait)();
 	void (*offer)(packet_t*);
 	void (*join)();
@@ -100,18 +103,26 @@ typedef struct {
 	void (*draw)(float* mag, float fps, float load, long sleep_time);
 	void (*open)(int *, char***);
 	void (*start)();
+	bq_t *scatter_bq;
 } surface_t;
 
 typedef struct {
 	int (*open)();
-	int (*start)();
+	int (*start)(bq_t *scatter_bq);
 	bq_t *demod_bq;
 } dsp_t;
+
+typedef struct {
+	int (*open)();
+	int (*start)();
+	bq_t *wb_bq;
+} wb_t;
 
 extern rtl_sdr_t rtl_sdr;
 extern scheduler_t scheduler;
 extern analyzer_t analyzer;
 extern surface_t surface;
 extern dsp_t dsp;
+extern wb_t wb;
 
 #endif /* __SDR_H__ */
