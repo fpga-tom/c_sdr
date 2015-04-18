@@ -13,6 +13,11 @@ static sdr_thread_t *ana_thread;
 static fftw_complex *in, *out;
 static fftw_plan plan;
 static float mag[FFTW_SIZE];
+static bq_t fft_bq;
+
+#define FFTQ_SIZE 32
+
+static packet_t packets[FFTQ_SIZE];
 
 // utility functions
 
@@ -36,6 +41,26 @@ static void process(packet_t *p) {
 	}
 }
 
+static
+packet_t *wait() {
+	bq_lock(&fft_bq);
+	while(list_empty(&fft_bq.q)) {
+		bq_wait(&fft_bq);
+	}
+	packet_t *p = list_entry(fft_bq.q.next, packet_t, list);
+	list_del(&p->list);
+	bq_unlock(&fft_bq);
+	return p;
+}
+
+static
+void offer(packet_t *p) {
+	bq_lock(&fft_bq);
+	list_add_tail(&p->list, &fft_bq.p);
+	bq_broadcast(&fft_bq);
+	bq_unlock(&fft_bq);
+}
+
 // analyzer thread
 //
 static void *analyzer_td(void *arg) {
@@ -44,9 +69,9 @@ static void *analyzer_td(void *arg) {
 	long sleep_time = 0;
 	while(1) {
 		long timestamp = c_time();
-		packet_t *p = scheduler.wait();
+		packet_t *p = wait();
 		process(p);
-		scheduler.offer(p);
+		offer(p);
 		surface.draw(mag, fps, load, sleep_time);
 		sleep_time = 1000000.0f/fps - (c_time() - timestamp);
 		if(sleep_time > 0) {
@@ -68,6 +93,17 @@ static void *analyzer_td(void *arg) {
 }
 
 // public interface
+
+static
+int open() {
+	bq_init(&fft_bq);
+	bq_lock(&fft_bq);
+	for(int i=0;i<FFTQ_SIZE;i++) {
+		list_add_tail(&packets[i].list, &fft_bq.p);
+	}
+	bq_unlock(&fft_bq);
+	return 1;
+}
 
 static
 int start() {
@@ -101,5 +137,7 @@ int start() {
 }
 
 analyzer_t analyzer = {
-	.start = start
+	.open = open,
+	.start = start,
+	.fft_bq = &fft_bq
 };

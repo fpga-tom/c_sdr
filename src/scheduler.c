@@ -1,12 +1,9 @@
 #include "sdr.h"
 
-static bq_t fft_bq;
+static bq_t *fft_bq;
 static bq_t *demod_bq;
 static bq_t *wb_bq;
 
-#define FFTQ_SIZE 4
-
-static packet_t packets[FFTQ_SIZE];
 static sdr_thread_t *sched_thread;
 
 
@@ -16,14 +13,16 @@ static void *sched(void *arg) {
 	while(1) {
 		buf_t *b=rtl_sdr.wait();
 		if(b) {
-			bq_lock(&fft_bq);
-			if(!list_empty(&fft_bq.p)) {
-				packet_t *p = list_entry(fft_bq.p.next, packet_t, list);
+			/*
+			bq_lock(fft_bq);
+			if(!list_empty(&fft_bq->p)) {
+				packet_t *p = list_entry(fft_bq->p.next, packet_t, list);
 				rtl_sdr.fill(b, p);
-				queue(&p->list, &fft_bq);
-				bq_broadcast(&fft_bq);
+				queue(&p->list, fft_bq);
+				bq_broadcast(fft_bq);
 			}
-			bq_unlock(&fft_bq);
+			bq_unlock(fft_bq);
+			*/
 			bq_lock(demod_bq);
 			if(!list_empty(&demod_bq->p)) {
 				packet_t *p = list_entry(demod_bq->p.next, packet_t, list);
@@ -48,14 +47,10 @@ static void *sched(void *arg) {
 
 // public interface
 static
-int start(bq_t *dq, bq_t *wbq) {
-	int i;
+int start(bq_t *dq, bq_t *wbq, bq_t *fftq) {
 	demod_bq = dq;
 	wb_bq = wbq;
-	bq_init(&fft_bq);
-	for(i=0;i<FFTQ_SIZE;i++) {
-		list_add_tail(&packets[i].list, &fft_bq.p);
-	}
+	fft_bq = fftq;
 	if(sched_thread != NULL) {
 		sdr_log(ERROR, "scheduler already running");
 		return 0;
@@ -72,25 +67,7 @@ int start(bq_t *dq, bq_t *wbq) {
 	return 1;
 }
 
-static
-packet_t *wait() {
-	bq_lock(&fft_bq);
-	while(list_empty(&fft_bq.q)) {
-		bq_wait(&fft_bq);
-	}
-	packet_t *p = list_entry(fft_bq.q.next, packet_t, list);
-	list_del(&p->list);
-	bq_unlock(&fft_bq);
-	return p;
-}
 
-static
-void offer(packet_t *p) {
-	bq_lock(&fft_bq);
-	list_add_tail(&p->list, &fft_bq.p);
-	bq_broadcast(&fft_bq);
-	bq_unlock(&fft_bq);
-}
 
 static
 void join() {
@@ -100,7 +77,5 @@ void join() {
 
 scheduler_t scheduler = {
 	.start = start,
-	.wait = wait,
-	.offer = offer,
 	.join = join
 };

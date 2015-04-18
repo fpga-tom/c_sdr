@@ -11,7 +11,7 @@
 #define FFTW_SIZE (BUF_SIZE/2)
 //#define SPS (1411200)
 #define SPS (228000*4)
-#define NUM_CHANNELS 10
+#define NUM_CHANNELS 1000
 #define BW (NUM_CHANNELS*SPS)
 #define FM 150000
 //#define AUDIO 44100
@@ -33,6 +33,7 @@ typedef struct {
 	struct list_head avl; // availability list (free, used)
 	uint8_t data[BUF_SIZE];
 	uint64_t size;
+	uint32_t chan;
 } buf_t;
 
 static inline void bq_init(bq_t *bq) {
@@ -72,12 +73,14 @@ typedef struct {
 	float complex payload[FFTW_SIZE];
 	size_t size;
 	uint32_t freq;
+	uint32_t chan;
 } packet_t;
 
 typedef struct {
-	int (*open)(void *(*callback)(void*));
+	int (*open)(void *(*callback)(void*), uint32_t);
 	int (*start)();
 	int (*tune)(uint32_t);
+	int (*chan)(uint32_t);
 	uint32_t (*freq)();
 	int (*sps)(uint32_t);
 	int (*agc)(int);
@@ -89,14 +92,14 @@ typedef struct {
 } rtl_sdr_t;
 
 typedef struct {
-	int (*start)(bq_t*, bq_t*);
-	packet_t *(*wait)();
-	void (*offer)(packet_t*);
+	int (*start)(bq_t*, bq_t*,bq_t*);
 	void (*join)();
 } scheduler_t;
 
 typedef struct {
+	int (*open)();
 	int (*start)();
+	bq_t *fft_bq;
 } analyzer_t;
 
 typedef struct {
@@ -114,7 +117,7 @@ typedef struct {
 
 typedef struct {
 	int (*open)();
-	int (*start)();
+	int (*start)(bq_t *);
 	bq_t *wb_bq;
 } wb_t;
 

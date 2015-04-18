@@ -81,9 +81,11 @@ static void process(packet_t *p) {
 	}
 
 
+#if 0
 	if (pa_simple_write(stream, z3, sizeof(z3), &error) < 0) {
 		fprintf(stderr, __FILE__": pa_simple_write() failed: %s\n", pa_strerror(error));
 	}
+#endif
 }
 
 static void* dsp_td(void *arg) {

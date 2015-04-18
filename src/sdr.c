@@ -24,6 +24,10 @@ static bq_t cmd_bq;
 static sdr_thread_t *cmd_thread;
 static sdr_thread_t *rx_thread;
 static uint32_t _freq;
+static uint32_t _channels[NUM_CHANNELS];
+static uint32_t _chan=NUM_CHANNELS;
+static uint32_t _cur_chan;
+static uint32_t fstart;
 
 #define HOST "127.0.0.1"
 #define PORT 1234
@@ -34,6 +38,7 @@ static int sockfd;
 typedef struct {
 	struct list_head list;
 	uint8_t cmd[5];
+	uint32_t chan;
 } sdr_cmd_t;
 
 static sdr_cmd_t cmds[CMDQ_SIZE];
@@ -41,20 +46,23 @@ static buf_t bufs[BUFQ_SIZE];
 static float lookup_table[256];
 
 // common functions
+static
+int chan(uint32_t c);
 
 
-static sdr_cmd_t* cmd(uint8_t c, uint32_t arg) {
+static sdr_cmd_t* cmd(uint8_t c, uint32_t arg, uint32_t chan) {
 	bq_lock(&cmd_bq);
 	sdr_cmd_t *cmd;
 	while(list_empty(&cmd_bq.p)) 
 		bq_wait(&cmd_bq);
 	cmd = list_entry(cmd_bq.p.next, sdr_cmd_t, list);
-	sdr_log(INFO, "cmd");
+//	sdr_log(INFO, "cmd");
 	cmd->cmd[0] = c; 
 	cmd->cmd[1] = (arg >> 24) & 0xff; 
 	cmd->cmd[2] = (arg >> 16) & 0xff; 
 	cmd->cmd[3] = (arg >> 8) & 0xff; 
 	cmd->cmd[4] = (arg ) & 0xff; 
+	cmd->chan = chan;
 	queue(&cmd->list, &cmd_bq);
 	bq_broadcast(&cmd_bq);
 	bq_unlock(&cmd_bq);
@@ -89,9 +97,13 @@ static int sdr_connect(char* host, uint16_t port) {
 }
 
 static void sdr_exec(sdr_cmd_t *c) {
-	sdr_log(INFO, "executing command");
+//	sdr_log(INFO, "executing command");
 	if(write(sockfd, c->cmd, 5) != 5) {
 		sdr_log(ERROR, "cmd write error occupied");
+	}
+	usleep(100000);
+	if(c->cmd[0] == RTL_TCP_COMMAND_SET_FREQUENCY) {
+		_cur_chan = c->chan;
 	}
 }
 
@@ -118,7 +130,6 @@ static void *sdr_cmd_td(void *arg) {
 	pthread_exit(NULL);
 }
 
-
 //---------------------------------------------------------
 // receiver thread
 
@@ -133,6 +144,7 @@ static void* rx(void *arg) {
 			int index = 0;
 			buf_t *c = list_entry(pos, buf_t, avl); 
 //			buf_t *c = list_entry(buf_bq.p.next, buf_t, avl); 
+			c->chan = _cur_chan;
 			while(index != BUF_SIZE) {
 				int r = read(sockfd, c->data+index, BUF_SIZE-index);
 				if(r < 0) {
@@ -141,7 +153,6 @@ static void* rx(void *arg) {
 				}
 				index += r;
 			}
-
 			queue(&c->avl, &buf_bq);
 		}
 		bq_broadcast(&buf_bq);
@@ -158,6 +169,7 @@ static void* rx(void *arg) {
 static void fill(buf_t *buf, packet_t *packet) {
 	int i;
 	packet->freq = _freq;
+	packet->chan = buf->chan;
 	for(i=0;i<BUF_SIZE/2;i++) {
 		packet->payload[i] = lookup_table[buf->data[2*i]&0xff]
 			+ _Complex_I*lookup_table[buf->data[2*i+1]&0xff];
@@ -165,8 +177,9 @@ static void fill(buf_t *buf, packet_t *packet) {
 }
 
 static 
-int open(void* (*c)(void*)) {
+int open(void* (*c)(void*), uint32_t f) {
 	int i;
+	fstart = f;
 	for(i=0;i<256;i++)
 		lookup_table[i] = (i-127.4f)/128.0f;
 	if(cmd_thread != NULL){
@@ -221,7 +234,7 @@ int start() {
 static 
 int tune(uint32_t f) {
 	_freq = f;
-	cmd(RTL_TCP_COMMAND_SET_FREQUENCY,f);
+	cmd(RTL_TCP_COMMAND_SET_FREQUENCY,f, 0);
 	return 0;
 }
 
@@ -230,15 +243,40 @@ uint32_t freq() {
 	return 0;
 }
 
+static
+int chan(uint32_t c) {
+	if(c < NUM_CHANNELS) {
+		if(c != _chan) {
+			_chan = c;
+			_freq = _channels[c];
+			cmd(RTL_TCP_COMMAND_SET_FREQUENCY,_freq, c);
+		}
+		return 1;
+	} else {
+		sdr_log(ERROR, "wrong channel number");
+		return 0;
+	}
+}
+
 static 
 int agc(int agc) {
-	cmd(RTL_TCP_COMMAND_SET_AGC_MODE,agc);
+	cmd(RTL_TCP_COMMAND_SET_AGC_MODE,agc, 0);
 	return 0;
 }
 
 static 
 int sps(uint32_t sr) {
-	cmd(RTL_TCP_COMMAND_SET_SAMPLERATE,sr);
+	if(NUM_CHANNELS > 0) {
+		_channels[0] = fstart;
+		for(int i=1;i<NUM_CHANNELS;i++) {
+			_channels[i] = _channels[i-1] + SPS;
+		}
+	}
+	for(int i=0;i<NUM_CHANNELS;i++) {
+		printf("channel %d freq %d\n", i, _channels[i]);
+	}
+	printf("center freq: %d\n", (_channels[NUM_CHANNELS-1] + _channels[0])/2);
+	cmd(RTL_TCP_COMMAND_SET_SAMPLERATE,sr, 0);
 	return 0;
 }
 
@@ -294,6 +332,7 @@ rtl_sdr_t rtl_sdr = {
 	.open = open,
 	.start = start,
 	.tune = tune,
+	.chan = chan,
 	.freq = freq,
 	.agc = agc,
 	.sps = sps,

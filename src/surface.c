@@ -91,9 +91,12 @@ static gboolean draw_points(GtkWidget *widget, cairo_t *cr, gpointer data) {
 	}
 	cairo_stroke(cr);
 #endif
-#if 0
-	cairo_move_to(cr, 512,0);
-	cairo_line_to(cr, 512,512);
+#if 1
+	int step = 1024/NUM_CHANNELS;
+	for(int i=0;i<NUM_CHANNELS;i++) {
+		cairo_move_to(cr, step*i,0);
+		cairo_line_to(cr, step*i,512);
+	}
 	cairo_stroke(cr);
 #endif
 
@@ -134,9 +137,9 @@ void draw(float* _mag, float _fps, float _load, long _sleep_time) {
 	sleep_time = _sleep_time;
 	sdr_mutex_lock(&canvas_m);
 	for(int i=0;i<width;i++) {
-		bitmapData[waterfallTop][i*4]=((int)mag[i]*20)&0xff;
-		bitmapData[waterfallTop][i*4+1]=(((int)mag[i]*20)>>8)&0xff;
-		bitmapData[waterfallTop][i*4+2]=(((int)mag[i]*20)>>16)&0xff;
+		bitmapData[waterfallTop][i*4]=((int)mag[i]*30)&0xff;
+		bitmapData[waterfallTop][i*4+1]=(((int)mag[i]*30)>>8)&0xff;
+		bitmapData[waterfallTop][i*4+2]=(((int)mag[i]*30)>>16)&0xff;
 	}
 	gtk_widget_queue_draw(canvas);
 	sdr_mutex_unlock(&canvas_m);
