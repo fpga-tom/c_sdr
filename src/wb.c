@@ -2,6 +2,8 @@
 #include <math.h>
 #include <string.h>
 #include <unistd.h>
+#include <sys/syscall.h>
+#include <sys/types.h>
 #include "sdr.h"
 
 
@@ -16,6 +18,7 @@ static packet_t wbs[NUM_CHANNELS];
 static packet_t wb_buf[WB_SIZE];
 static float complex polybuf[NUM_CHANNELS*FFTW_SIZE];
 static uint32_t chan;
+static int counter;
 
 static void push() {
 	for(int i=0;i<NUM_CHANNELS;i++) {
@@ -35,32 +38,39 @@ static void push() {
 
 static void process(packet_t *p) {
 	if(!flags[p->chan]) {
-		memcpy(wbs[p->chan].payload, p->payload, sizeof(p->payload));
 		flags[p->chan]=1;
+
+		if(p->chan+1 < NUM_CHANNELS)
+			flags[p->chan+1]=0;
+
+		memcpy(wbs[p->chan].payload, p->payload, sizeof(p->payload));
 		chan = (p->chan + 1) % NUM_CHANNELS;
 		rtl_sdr.chan(chan);
-	}
-	if(chan == 0) {
-		float complex v[NUM_CHANNELS];
-		for(int i=0;i<FFTW_SIZE;i++) {
-			for(int k=0;k<NUM_CHANNELS;k++)
-				v[k] = wbs[k].payload[i];
-			firpfbch_crcf_synthesizer_execute(qs, v, &polybuf[i*NUM_CHANNELS]);
+		counter++;
+		if(counter == NUM_CHANNELS) {
+			float complex v[NUM_CHANNELS];
+			for(int i=0;i<FFTW_SIZE;i++) {
+				for(int k=0;k<NUM_CHANNELS;k++)
+					v[k] = wbs[k].payload[i];
+				firpfbch_crcf_synthesizer_execute(qs, v, &polybuf[i*NUM_CHANNELS]);
+			}
+			flags[0]=0;
+			counter = 0;
+			push();
 		}
-		for(int i=0;i<NUM_CHANNELS;i++)
-			flags[i]=0;
-		push();
 	}
 }
 
 
 static void *wb_td(void *arg) {
 	int num_channels = NUM_CHANNELS;
-	int _m = 2;
+	int _m = 4;
 	float As = 60.0f;                                                                                      
 	qs = firpfbch_crcf_create_kaiser(LIQUID_SYNTHESIZER,num_channels,_m,As);
 
 	printf("synthesis channelizer: %d\n", num_channels);
+	pid_t tid = syscall(SYS_gettid);
+	printf("channelizer thread pid: %d\n", tid);
 	while(1) {
 		bq_lock(&wb_bq);
 		while(list_empty(&wb_bq.q)) {

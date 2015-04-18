@@ -10,8 +10,10 @@
 #define BUF_SIZE (2048)
 #define FFTW_SIZE (BUF_SIZE/2)
 //#define SPS (1411200)
-#define SPS (228000*4)
-#define NUM_CHANNELS 1000
+//#define SPS (228000*4)
+#define FSTART 400000000
+#define SPS 2000000
+#define NUM_CHANNELS 50
 #define BW (NUM_CHANNELS*SPS)
 #define FM 150000
 //#define AUDIO 44100
@@ -89,6 +91,7 @@ typedef struct {
 	buf_t* (*wait)();
 	void (*offer)(buf_t*);
 	void (*fill)(buf_t *, packet_t *);
+	uint32_t (*fstart)();
 } rtl_sdr_t;
 
 typedef struct {

@@ -275,7 +275,7 @@ int sps(uint32_t sr) {
 	for(int i=0;i<NUM_CHANNELS;i++) {
 		printf("channel %d freq %d\n", i, _channels[i]);
 	}
-	printf("center freq: %d\n", (_channels[NUM_CHANNELS-1] + _channels[0])/2);
+	printf("center freq: %d\n", (_channels[NUM_CHANNELS-1] + _channels[0] + SPS)/2);
 	cmd(RTL_TCP_COMMAND_SET_SAMPLERATE,sr, 0);
 	return 0;
 }
@@ -327,6 +327,11 @@ void offer(buf_t *b) {
 	bq_unlock(&buf_bq);
 }
 
+static
+uint32_t _fstart() {
+	return fstart;
+}
+
 
 rtl_sdr_t rtl_sdr = {
 	.open = open,
@@ -340,6 +345,7 @@ rtl_sdr_t rtl_sdr = {
 	.poll = poll,
 	.offer = offer,
 	.fill = fill,
-	.wait = wait
+	.wait = wait,
+	.fstart = _fstart
 };
 

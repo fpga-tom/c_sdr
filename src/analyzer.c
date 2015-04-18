@@ -2,10 +2,11 @@
 #include <sys/time.h>
 #include <complex.h>
 #include <fftw3.h>
+#include <string.h>
 #include "sdr.h"
 
-#define FRAME_RATE 30
-#define MAX_FRAME_RATE 30
+#define FRAME_RATE 15
+#define MAX_FRAME_RATE 15
 #define LOW_THRESHOLD 0.65
 #define HIGH_THRESHOLD 0.85
 
@@ -13,9 +14,12 @@ static sdr_thread_t *ana_thread;
 static fftw_complex *in, *out;
 static fftw_plan plan;
 static float mag[FFTW_SIZE];
+static float mag1[FFTW_SIZE];
 static bq_t fft_bq;
 
-#define FFTQ_SIZE 32
+static int count=0;
+
+#define FFTQ_SIZE 128
 
 static packet_t packets[FFTQ_SIZE];
 
@@ -32,12 +36,30 @@ static void process(packet_t *p) {
 	for(i=0;i<FFTW_SIZE && i<BUF_SIZE;i++) {
 		in[i] = p->payload[i];
 	}
+	if(!count) {
+		for(i=0;i<FFTW_SIZE;i++) {
+			mag[i]=0;
+		}
+	}
 	fftw_execute(plan);
+#if 0
 	for(i=0;i<FFTW_SIZE/2;i++) {
-		mag[i+FFTW_SIZE/2] = crealf(out[i])*crealf(out[i]) + cimagf(out[i])*cimagf(out[i]);
+		mag[i+FFTW_SIZE/2] += crealf(out[i])*crealf(out[i]) + cimagf(out[i])*cimagf(out[i]);
 	}
 	for(i=FFTW_SIZE/2;i<FFTW_SIZE;i++) {
-		mag[i-FFTW_SIZE/2] = crealf(out[i])*crealf(out[i]) + cimagf(out[i])*cimagf(out[i]);
+		mag[i-FFTW_SIZE/2] += crealf(out[i])*crealf(out[i]) + cimagf(out[i])*cimagf(out[i]);
+	}
+#else
+	for(i=0;i<FFTW_SIZE;i++) {
+		mag[i] += crealf(out[i])*crealf(out[i]) + cimagf(out[i])*cimagf(out[i]);
+	}
+#endif
+	if(++count==10) {
+		count = 0;
+		for(int i=0;i<FFTW_SIZE;i++) {
+			mag[i] /= 10;
+		}
+		memcpy(mag1, mag, sizeof(mag));
 	}
 }
 
@@ -72,7 +94,7 @@ static void *analyzer_td(void *arg) {
 		packet_t *p = wait();
 		process(p);
 		offer(p);
-		surface.draw(mag, fps, load, sleep_time);
+		surface.draw(mag1, fps, load, sleep_time);
 		sleep_time = 1000000.0f/fps - (c_time() - timestamp);
 		if(sleep_time > 0) {
 			load = (c_time() - timestamp) / (1000000.0f/fps);

@@ -13,7 +13,7 @@ static void *sched(void *arg) {
 	while(1) {
 		buf_t *b=rtl_sdr.wait();
 		if(b) {
-			/*
+#if 0
 			bq_lock(fft_bq);
 			if(!list_empty(&fft_bq->p)) {
 				packet_t *p = list_entry(fft_bq->p.next, packet_t, list);
@@ -22,7 +22,7 @@ static void *sched(void *arg) {
 				bq_broadcast(fft_bq);
 			}
 			bq_unlock(fft_bq);
-			*/
+#endif
 			bq_lock(demod_bq);
 			if(!list_empty(&demod_bq->p)) {
 				packet_t *p = list_entry(demod_bq->p.next, packet_t, list);

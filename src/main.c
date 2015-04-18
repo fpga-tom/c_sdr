@@ -10,7 +10,7 @@ int main(int argc, char** argv) {
 	int k=0;
 //	printf("connecting to rtl sdr ...");
 	surface.open(&argc, &argv);
-	rtl_sdr.open(NULL, 88000000);
+	rtl_sdr.open(NULL, FSTART);
 	analyzer.open();
 	usleep(100000);
 	wb.open();

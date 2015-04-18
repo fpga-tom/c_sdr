@@ -1,6 +1,7 @@
 #include <fftw3.h>
 #include <math.h>
 #include <string.h>
+#include <sys/syscall.h>
 #include <sys/types.h>
 #include <unistd.h>
 #include <stdio.h>
@@ -105,7 +106,8 @@ static void* dsp_td(void *arg) {
 	float bw = 0.4f;
 	float slsl1 = 60.f;
 	unsigned int npfb=64;
-	printf("dsp thread pid: %d\n", getpid());
+	pid_t tid = syscall(SYS_gettid);
+	printf("dsp thread pid: %d\n", tid);
 
 	resamp = resamp_rrrf_create(r, h_len, bw, slsl1, npfb);
 	resamp2 = resamp2_rrrf_create(m1,0,As); 

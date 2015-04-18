@@ -49,6 +49,22 @@ static gboolean scroll_freq(GtkWidget *widget, GdkEventScroll *event, gpointer d
 	return TRUE;
 }
 
+static gboolean motion(GtkWidget *widget, GdkEventMotion *event, gpointer data) {
+	double f = NUM_CHANNELS*SPS*(event->x/1024);
+	f += rtl_sdr.fstart();
+	printf("%f\n", f);
+	return TRUE;
+}
+
+static gboolean tooltip(GtkWidget *widget,gint x, gint y, gboolean keyboard_mode, GtkTooltip *tooltip, gpointer user_data) {
+	char tp[30]={0,};
+	double f = NUM_CHANNELS*SPS*(x/1024.0f);
+	f += rtl_sdr.fstart();
+	sprintf(tp,"%f\n", f);
+	gtk_tooltip_set_text(tooltip, tp);
+	return TRUE;
+}
+
 static void toggle_agc(GtkToggleButton *togglebutton, gpointer data) {
 	rtl_sdr.agc(gtk_toggle_button_get_active(togglebutton));
 }
@@ -165,8 +181,11 @@ void open(int *argc, char ***argv) {
 	g_signal_connect(G_OBJECT(canvas), "draw", G_CALLBACK(draw_points), NULL); 
 	g_signal_connect(G_OBJECT(freq_input), "key-press-event", G_CALLBACK(change_freq), NULL); 
 	g_signal_connect(G_OBJECT(canvas), "scroll-event", G_CALLBACK(scroll_freq), NULL); 
+//	g_signal_connect(G_OBJECT(canvas), "motion-notify-event", G_CALLBACK(motion), NULL); 
+	g_signal_connect(G_OBJECT(canvas), "query-tooltip", G_CALLBACK(tooltip), NULL); 
 	g_signal_connect(G_OBJECT(agc_button), "toggled", G_CALLBACK(toggle_agc), NULL); 
 	gtk_widget_add_events(GTK_WIDGET(canvas), GDK_SCROLL_MASK);
+//	gtk_widget_add_events(GTK_WIDGET(canvas), GDK_POINTER_MOTION_MASK);
 
 	/* Destroy builder */
     g_object_unref( G_OBJECT( builder ) );
